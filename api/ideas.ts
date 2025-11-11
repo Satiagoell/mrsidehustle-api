@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 
-export const config = { runtime: "nodejs20.x" };
+export const config = { runtime: "nodejs" };
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
