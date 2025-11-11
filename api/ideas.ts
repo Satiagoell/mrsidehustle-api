@@ -63,14 +63,14 @@ Required section headings (exact order):
 Keep it concise, mobile-friendly, and realistic.`;
 
     const ai = await client.responses.create({
-      model: "gpt-4o-mini",
-      temperature: 0.6,
-      response_format: { type: "json_object" },
-      input: [
-        { role: "system", content: system },
-        { role: "user", content: prompt }
-      ]
-    });
+  model: "gpt-4o-mini",
+  temperature: 0.6,
+  text: { format: "json" }, // ← updated line
+  input: [
+    { role: "system", content: system },
+    { role: "user", content: prompt }
+  ]
+});
 
     const text = ai.output_text || "";
     const data = JSON.parse(text);
