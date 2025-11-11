@@ -1,38 +1,51 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 
-export const config = { runtime: "nodejs" };
+// No config field needed; the project is Node runtime by default
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export default async function handler(req: Request) {
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
-    });
-  }
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS (adjust origin once you know your frontend domain)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { age, location, strengths, enjoys, skillset, hoursPerWeek, seedBudget } = await req.json();
-  if (age == null || !location || !strengths || !enjoys || !skillset ||
-      hoursPerWeek == null || seedBudget == null) {
-    return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
-  }
+  try {
+    // Vercel Node functions provide req.body (string or object)
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    const { age, location, strengths, enjoys, skillset, hoursPerWeek, seedBudget } = body;
 
-  const system = `You are Mr.SideHustle, an energetic strategist who creates realistic, upbeat side-hustle ideas.
+    if (
+      age == null || !location || !strengths || !enjoys || !skillset ||
+      hoursPerWeek == null || seedBudget == null
+    ) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // --- Uncomment this stub to smoke-test without OpenAI first ---
+    // return res.status(200).json({
+    //   ideas: Array.from({ length: 3 }).map((_, i) => ({
+    //     title: `Stub Idea ${i + 1}`,
+    //     tagline: "Upbeat and realistic",
+    //     sections: Array.from({ length: 10 }).map(() => ({ heading: "H", body: "B" })),
+    //     difficulty: 4,
+    //     worthiness: 8,
+    //     firstThreeSteps: ["Step 1", "Step 2", "Step 3"]
+    //   }))
+    // });
+
+    const system = `You are Mr.SideHustle, an energetic strategist who creates realistic, upbeat side-hustle ideas.
 - Use real tools/platforms where relevant.
 - Encourage action and include first steps.
 - Output ONLY valid JSON with exactly 3 ideas, each with 10 sections in the required order.`;
 
-  const user = { age, location, strengths, enjoys, skillset, hoursPerWeek, seedBudget };
+    const user = { age, location, strengths, enjoys, skillset, hoursPerWeek, seedBudget };
 
-  const prompt = `User profile:\\n${JSON.stringify(user, null, 2)}
+    const prompt = `User profile:\n${JSON.stringify(user, null, 2)}
 Return JSON with:
 - ideas: [3 items]
 - each idea has: title, tagline, sections(10 in the required order), difficulty, worthiness, firstThreeSteps(3)
@@ -49,8 +62,7 @@ Required section headings (exact order):
 10 Worthiness (1–10): short reason
 Keep it concise, mobile-friendly, and realistic.`;
 
-  try {
-    const r = await client.responses.create({
+    const ai = await client.responses.create({
       model: "gpt-4o-mini",
       temperature: 0.6,
       response_format: { type: "json_object" },
@@ -60,29 +72,19 @@ Keep it concise, mobile-friendly, and realistic.`;
       ]
     });
 
-    const text = r.output_text || "";
+    const text = ai.output_text || "";
     const data = JSON.parse(text);
+
     if (!Array.isArray(data?.ideas) || data.ideas.length !== 3) {
-      throw new Error("Invalid model output");
+      return res.status(500).json({ error: "Invalid model output" });
     }
 
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        // For production, replace * with your frontend origin
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
-    });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: "Failed to generate ideas", detail: e?.message }), {
-      status: 500,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
+    return res.status(200).json(data);
+  } catch (err: any) {
+    // Surface a friendly JSON error (and not an HTML crash page)
+    return res.status(500).json({
+      error: "FUNCTION_INVOCATION_FAILED",
+      detail: err?.message || String(err)
     });
   }
 }
